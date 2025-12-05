@@ -24,3 +24,6 @@ Thumbs.db
 *.tmp
 *.bak
 *.old
+venv/
+__pycache__/
+.DS_Store
