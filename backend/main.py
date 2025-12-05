@@ -2,7 +2,7 @@ import asyncio
 import random
 import os
 import time
-
+from datetime import datetime
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -253,10 +253,13 @@ async def attack_scheduler_loop():
                 if now >= target_time:
                     ev = entry.get("event")
                     if ev is not None:
+                
+                        # Assign timestamp at the moment the event fires
+                        ev.timestamp = datetime.utcnow().isoformat()
+                
                         try:
                             add_event(ev)
                         except Exception:
-                            # If one event fails to add, move on but keep the rest.
                             pass
                     idx += 1
                     plan["index"] = idx

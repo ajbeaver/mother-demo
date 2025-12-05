@@ -2,6 +2,7 @@ from collections import deque
 from typing import Deque, List, Optional, Dict
 from datetime import datetime, timedelta
 
+from backend.modules import classifier, posture, recommender
 from backend.modules.utils import Event
 
 # Rolling buffer of recent events
@@ -35,10 +36,7 @@ def _ensure_timestamp(event: Event) -> None:
 def _sorted_events_newest_first(events: Deque[Event]) -> List[Event]:
     """
     Return events ordered by (timestamp, id) newest-first.
-
-    We rely on ISO-8601 strings so lexicographic order == chronological order.
     """
-    # Make sure every event has a timestamp
     for e in events:
         _ensure_timestamp(e)
 
@@ -52,9 +50,7 @@ def _sorted_events_newest_first(events: Deque[Event]) -> List[Event]:
 def add_event(event: Event) -> Event:
     """
     Store an Event in the rolling buffer.
-    If event.id is missing or zero, assign one.
-    If timestamp is missing/empty, assign now() in ISO-8601.
-    Returns the stored event.
+    Assign ID + timestamp if missing.
     """
     global _events
 
@@ -69,15 +65,14 @@ def add_event(event: Event) -> Event:
 
 def get_all_events() -> List[Event]:
     """
-    Return all events, newest-first, ordered by (timestamp, id).
+    Return all events newest-first.
     """
     return _sorted_events_newest_first(_events)
 
 
 def get_events_by_severity(severity: str) -> List[Event]:
     """
-    Return all events with the given severity, newest-first.
-    Severity is a simple string: benign | suspicious | malicious | critical.
+    Return events filtered by severity.
     """
     filtered = [e for e in _events if e.severity == severity]
     return sorted(
@@ -89,10 +84,8 @@ def get_events_by_severity(severity: str) -> List[Event]:
 
 def get_event_by_id(event_id: int) -> Optional[Event]:
     """
-    Find a single event by ID.
-    Returns None if not found.
+    Find an event by ID.
     """
-    # Search from newest to oldest for speed
     for e in reversed(_events):
         if e.id == event_id:
             return e
@@ -101,8 +94,7 @@ def get_event_by_id(event_id: int) -> Optional[Event]:
 
 def get_dashboard_counts() -> Dict[str, Dict[str, int]]:
     """
-    Aggregate counts for dashboard display.
-    Returns total and counts per severity.
+    Total count + per-severity counts.
     """
     total = len(_events)
     counts = {
@@ -124,11 +116,12 @@ def get_dashboard_counts() -> Dict[str, Dict[str, int]]:
 
 def serialize_event(e: Event) -> Dict:
     """
-    Convert an Event object to a JSON-serializable dict.
-
-    Includes chain/stage metadata if present on the Event; otherwise None.
+    Convert an Event to a JSON-serializable dict.
+    RECOMMENDATION FIELD PATCHED:
+    Now uses recommender.recommend_for_event() and extracts ONLY .action
     """
-    return {
+
+    event_dict = {
         "id": e.id,
         "timestamp": getattr(e, "timestamp", None),
         "chain_id": getattr(e, "chain_id", None),
@@ -140,25 +133,31 @@ def serialize_event(e: Event) -> Dict:
         "severity": e.severity,
         "raw": e.raw,
         "parsed": e.parsed,
-        "recommendation": e.recommendation,
+    }
+
+    # classification for this specific event
+    classification = classifier.classify_event(event_dict)
+
+    # only return the action string, NOT full dict
+    rec = recommender.recommend_for_event(event_dict, classification)
+    action = rec.get("action", "none")
+
+    return {
+        **event_dict,
+        "recommendation": action,
     }
 
 
 def get_recent_events(limit: int = 25) -> List[Event]:
     """
-    Return newest-first events up to limit,
-    ordered by (timestamp, id).
+    Latest N events.
     """
     return _sorted_events_newest_first(_events)[:limit]
 
 
 def get_events_in_window(seconds: int) -> List[Event]:
     """
-    Return events whose timestamps are within the last N seconds,
-    newest-first.
-
-    Any event with a missing/invalid timestamp is silently skipped
-    (sim artifacts; we don't want judges seeing broken entries).
+    Return events within the past N seconds.
     """
     cutoff = datetime.utcnow() - timedelta(seconds=seconds)
     result: List[Event] = []
@@ -170,13 +169,11 @@ def get_events_in_window(seconds: int) -> List[Event]:
         try:
             ts = datetime.fromisoformat(ts_str)
         except ValueError:
-            # Drop malformed timestamps.
             continue
 
         if ts >= cutoff:
             result.append(e)
 
-    # Return newest-first
     return sorted(
         result,
         key=lambda e: (e.timestamp, e.id),
@@ -186,25 +183,51 @@ def get_events_in_window(seconds: int) -> List[Event]:
 
 def get_posture(window_seconds: int = 15) -> str:
     """
-    Compute posture based on severity in the recent time window.
-    Priority: critical -> malicious -> suspicious -> benign.
+    Compute Mother posture from:
+    • per-event classifications
+    • per-chain classifications
     """
     recent = get_events_in_window(window_seconds)
-    severities = [e.severity for e in recent]
 
-    if "critical" in severities:
-        return "CRITICAL"
-    if "malicious" in severities:
-        return "ALERT"
-    if "suspicious" in severities:
-        return "ELEVATED"
-    return "MONITOR"
+    recent_dicts = [
+        {
+            "id": e.id,
+            "timestamp": getattr(e, "timestamp", None),
+            "chain_id": getattr(e, "chain_id", None),
+            "stage": getattr(e, "stage", None),
+            "source_ip": e.source_ip,
+            "dest_port": e.dest_port,
+            "phase": e.phase,
+            "category": e.category,
+            "severity": e.severity,
+            "raw": e.raw,
+            "parsed": e.parsed,
+        }
+        for e in recent
+    ]
+
+    chains = {}
+    for ev in recent_dicts:
+        cid = ev.get("chain_id")
+        if not cid:
+            continue
+        chains.setdefault(cid, []).append(ev)
+
+    chain_summaries = []
+    for cid, evts in chains.items():
+        summary = classifier.classify_chain(evts)
+        summary["chain_id"] = cid
+        chain_summaries.append(summary)
+
+    return posture.determine_posture(
+        recent_events=recent_dicts,
+        chain_summaries=chain_summaries,
+    )
 
 
 def get_deltas(window_seconds: int = 15) -> Dict[str, int]:
     """
-    Count how many events of each severity occurred in last N seconds.
-    Events with missing/invalid timestamps are ignored.
+    Count severities in last N seconds.
     """
     recent = get_events_in_window(window_seconds)
     delta = {
