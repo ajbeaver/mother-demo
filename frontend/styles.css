@@ -84,28 +84,11 @@ body {
     font-size: 1.3rem;
 }
 
-/* Console (unchanged) */
-.console-container {
-    display: flex;
-    flex-direction: column;
-    height: 80vh;
-    padding: 20px;
+.attack-status {
+    margin-top: 4px;
+    font-size: 0.9em;
+    color: #ccc;
 }
-
-.console-output {
-    flex: 1;
-    overflow-y: auto;
-    background: #000;
-    padding: 10px;
-}
-
-#console-input {
-    padding: 10px;
-    background: #222;
-    color: #eee;
-    border: none;
-}
-
 /* Inspector (unchanged) */
 #inspector-output {
     padding: 20px;

@@ -18,12 +18,11 @@ async function runSplash() {
     const enter = document.getElementById("splash-enter");
 
     const lines = [
-        "Initializing Mother Core v1.0...\n",
-        "Network perimeter scan in progress...\n",
-        "Intrusion detection system online...\n",
-        "Threat analysis protocols active...\n",
-        "Sentinel core activated — all vulnerable sectors are being monitored...\n",
-        "",
+        "Initializing Mother Core v1.0...",
+        "Network perimeter scan in progress...",
+        "Intrusion detection system online...",
+        "Threat analysis protocols active...",
+        "Sentinel core activated — all vulnerable sectors are being monitored...",
         "-----",
         "Press ENTER to continue to Mother Dashboard..."
     ];
@@ -177,9 +176,23 @@ async function loadInspector() {
 
 async function bindButtons() {
     const btn = document.getElementById("attack-btn");
+    const statusEl = document.getElementById("attack-status");
+
     if (btn) {
         btn.onclick = async () => {
-            await fetchJSON("/api/attack/trigger", { method: "POST" });
+            statusEl.textContent = ""; // clear previous message
+
+            const res = await fetchJSON("/api/attack/trigger", { method: "POST" });
+
+            if (res.status === "busy") {
+                statusEl.textContent = `Attack queue full (${res.active}/${res.limit})`;
+                return; // do NOT update dashboard/events
+            }
+
+            if (res.status === "scheduled") {
+                statusEl.textContent = ""; // ensure quiet when successful
+            }
+
             await updateDashboard();
             await loadEvents();
         };
@@ -216,7 +229,6 @@ function route() {
 
     if (path === "/dashboard") showView("dashboard");
     else if (path === "/events") showView("events");
-    else if (path === "/console") showView("console");
     else if (path.startsWith("/inspector")) showView("inspector");
     else showView("splash");
 }

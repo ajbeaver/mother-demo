@@ -41,6 +41,7 @@ app.mount("/frontend", StaticFiles(directory=FRONTEND_DIR), name="frontend")
 #     "index": int,
 # }
 _attack_plans = []
+MAX_ACTIVE_PLANS = 15
 
 
 def _normalize_attack_plan(raw):
@@ -170,19 +171,62 @@ async def event_detail(event_id: int):
     return serialize_event(e)
 
 
+# Simple in-memory rate bucket per IP
+_LAST_TRIGGER = {}          # ip -> timestamp of last call
+_TRIGGER_COOLDOWN = 1.5     # seconds between allowed triggers per IP
+_MAX_TRIGGERS_PER_MIN = 30  # hard cap per IP per 60s
+_TRIGGER_HISTORY = {}       # ip -> list[timestamps]
+
+
 @app.post("/api/attack/trigger")
-async def trigger_attack():
+async def trigger_attack(request: Request):
     """
     Request a new attack chain.
-
-    - Builds a fresh plan from the attack engine.
-    - Registers it with the scheduler.
-    - Returns a small summary (no full event list).
+    Includes:
+      - active chain limit
+      - per-IP cooldown
+      - per-IP rolling rate limit
     """
-    plan = _create_runtime_plan()
+    client_ip = request.client.host
 
+    # --- Rate-limit: cooldown ---
+    now = time.time()
+    last = _LAST_TRIGGER.get(client_ip, 0)
+    if now - last < _TRIGGER_COOLDOWN:
+        return {
+            "status": "throttled",
+            "reason": "cooldown_active",
+            "retry_after": round(_TRIGGER_COOLDOWN - (now - last), 2),
+        }
+    _LAST_TRIGGER[client_ip] = now
+
+    # --- Rate-limit: max triggers per minute ---
+    history = _TRIGGER_HISTORY.setdefault(client_ip, [])
+    # prune old entries
+    one_minute_ago = now - 60
+    history = [t for t in history if t >= one_minute_ago]
+    _TRIGGER_HISTORY[client_ip] = history
+
+    if len(history) >= _MAX_TRIGGERS_PER_MIN:
+        return {
+            "status": "throttled",
+            "reason": "rate_limit_per_minute",
+            "limit": _MAX_TRIGGERS_PER_MIN,
+        }
+
+    history.append(now)
+
+    # --- NEW: active chain limit check ---
+    if len(_attack_plans) >= MAX_ACTIVE_PLANS:
+        return {
+            "status": "busy",
+            "reason": "max_active_plans_reached",
+            "active": len(_attack_plans),
+            "limit": MAX_ACTIVE_PLANS,
+        }
+
+    plan = _create_runtime_plan()
     if plan is None:
-        # Defensive: engine returned nothing or invalid
         return {
             "status": "skipped",
             "reason": "no_attack_generated",
@@ -194,8 +238,9 @@ async def trigger_attack():
         "status": "scheduled",
         "chain_id": plan["chain_id"],
         "approx_duration_sec": round(plan["duration"], 1),
+        "active": len(_attack_plans),
+        "limit": MAX_ACTIVE_PLANS,
     }
-
 
 # ------------------------------------------------------------
 # SPA FALLBACK
