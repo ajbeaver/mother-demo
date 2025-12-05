@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mother Demo</title>
+    <link rel="stylesheet" href="/frontend/styles.css">
+</head>
+<body>
+
+    <!-- Splash Screen -->
+    <section id="view-splash" class="view">
+        <div class="splash-container">
+            <pre id="splash-output" class="terminal-green"></pre>
+            <div id="splash-enter" class="hidden splash-enter">[ PRESS ENTER ]</div>
+        </div>
+    </section>
+
+    <!-- Dashboard -->
+    <section id="view-dashboard" class="view hidden">
+        <header class="topbar">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/events">Events</a>
+            <a href="/console">Console</a>
+        </header>
+
+        <div class="dashboard-grid">
+            <div class="card"><h3>Benign</h3><span id="count-benign">0</span></div>
+            <div class="card"><h3>Suspicious</h3><span id="count-suspicious">0</span></div>
+            <div class="card"><h3>Malicious</h3><span id="count-malicious">0</span></div>
+            <div class="card"><h3>Critical</h3><span id="count-critical">0</span></div>
+        </div>
+
+        <div class="posture-block">
+            <span>Posture:</span>
+            <span id="posture-value">MONITOR</span>
+        </div>
+
+        <button id="attack-btn">Simulate Attack</button>
+    </section>
+
+    <!-- Events List -->
+    <section id="view-events" class="view hidden">
+        <header class="topbar">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/events">Events</a>
+            <a href="/console">Console</a>
+        </header>
+
+        <h2>Events</h2>
+
+        <!-- Chain Filter Banner -->
+        <div id="chain-filter-banner" style="display:none; margin:6px 0; font-family:monospace;"></div>
+
+        <!-- Clear Chain Filter -->
+        <button id="clear-chain-btn" style="display:none;">Clear Chain Filter</button>
+
+        <div id="events-container"></div>
+    </section>
+
+    <!-- Inspector -->
+    <section id="view-inspector" class="view hidden">
+        <header class="topbar">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/events">Events</a>
+            <a href="/console">Console</a>
+        </header>
+
+        <h2>Inspector</h2>
+        <pre id="inspector-output"></pre>
+
+        <!-- Link back to chain -->
+        <button id="inspect-chain-btn" class="hidden">View Full Chain</button>
+    </section>
+
+    <!-- Console -->
+    <section id="view-console" class="view hidden">
+        <header class="topbar">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/events">Events</a>
+            <a href="/console">Console</a>
+        </header>
+
+        <div class="console-container">
+            <div id="console-output" class="console-output"></div>
+            <input id="console-input" type="text" placeholder="Type a command...">
+        </div>
+    </section>
+
+    <script src="/frontend/script.js"></script>
+</body>
+</html>
