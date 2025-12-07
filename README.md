@@ -74,7 +74,7 @@ The focus is not “AI magic,” but building *systems that behave intelligently
 ---
 
 ## Live Demo  
-(Insert deployment URL)
+http://170.187.144.223:8080/
 
 ## Repository  
 https://github.com/ajbeaver/mother-demo
